@@ -16,23 +16,26 @@
  */
 package org.dasein.cloud.softlayer;
 
+import org.dasein.cloud.CloudErrorType;
 import org.dasein.cloud.CloudException;
 
+import javax.annotation.Nonnegative;
 import javax.annotation.Nonnull;
 
 /**
- * An error in configuring SoftLayer's context in some manner.
- * <p>Created by George Reese: 10/25/12 7:46 PM</p>
+ * Base exception class for errors that occur in SoftLayer.
+ * <p>Created by George Reese: 10/30/12 1:11 PM</p>
  * @author George Reese
  * @version 2012.09 initial version
  * @since 2012.09
  */
-public class SoftLayerConfigurationException extends CloudException {
-    public SoftLayerConfigurationException(@Nonnull String message) {
-        super(message);
+public class SoftLayerException extends CloudException {
+
+    public SoftLayerException(@Nonnull Throwable cause) {
+        super(cause);
     }
 
-    public SoftLayerConfigurationException(@Nonnull Throwable cause) {
-        super(cause);
+    public SoftLayerException(@Nonnull CloudErrorType type, @Nonnegative int httpCode, @Nonnull String providerCode, @Nonnull String message) {
+        super(type, httpCode, providerCode, message);
     }
 }

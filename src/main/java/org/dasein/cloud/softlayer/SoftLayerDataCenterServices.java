@@ -14,31 +14,36 @@
  *  enStratus Networks Inc.
  * ====================================================================
  */
-package org.dasein.cloud.cloudsigma;
+package org.dasein.cloud.softlayer;
 
+import org.apache.log4j.Logger;
 import org.dasein.cloud.CloudException;
 import org.dasein.cloud.InternalException;
-import org.dasein.cloud.ProviderContext;
 import org.dasein.cloud.dc.DataCenter;
 import org.dasein.cloud.dc.DataCenterServices;
 import org.dasein.cloud.dc.Region;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.net.URI;
-import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Locale;
 
 /**
- * Implements data center services for SoftLayer describing the different SoftLayer regions.
+ * Implements data center services for SoftLayer describing the different SoftLayer regions. This class maps
+ * SoftLayer data centers to Dasein Cloud regions. SoftLayer regions are ignored.
  * <p>Created by George Reese: 10/25/12 7:18 PM</p>
  * @author George Reese
  * @version 2012.09 initial version
  * @since 2012.09
  */
 public class SoftLayerDataCenterServices implements DataCenterServices {
+    static private final Logger logger = SoftLayer.getLogger(SoftLayerDataCenterServices.class);
+
     private SoftLayer provider;
 
     SoftLayerDataCenterServices(@Nonnull SoftLayer provider) { this.provider = provider; }
@@ -80,79 +85,81 @@ public class SoftLayerDataCenterServices implements DataCenterServices {
         Region r = getRegion(providerRegionId);
 
         if( r == null ) {
-            return Collections.emptyList();
+            throw new CloudException("No such region: " + providerRegionId);
         }
         DataCenter dc = new DataCenter();
 
         dc.setActive(r.isActive());
         dc.setAvailable(r.isAvailable());
-        if( providerRegionId.equals("eu-ch1") ) {
-            dc.setActive(true);
-            dc.setAvailable(true);
-            dc.setName("Zurich");
-            dc.setProviderDataCenterId(providerRegionId+ "-a");
-            dc.setRegionId(providerRegionId);
-        }
-        else if( providerRegionId.equals("us-nv1") ) {
-            dc.setActive(true);
-            dc.setAvailable(true);
-            dc.setName("Las Vegas");
-            dc.setProviderDataCenterId(providerRegionId+ "-a");
-            dc.setRegionId(providerRegionId);
-        }
+        dc.setName(r.getName());
+        dc.setProviderDataCenterId(providerRegionId);
+        dc.setRegionId(providerRegionId);
         return Collections.singletonList(dc);
     }
 
     @Override
     public Collection<Region> listRegions() throws InternalException, CloudException {
-        ProviderContext ctx = provider.getContext();
+        SoftLayerMethod method = new SoftLayerMethod(provider);
+        JSONArray list = method.list("SoftLayer_Location/getDatacenters");
 
-        if( ctx == null ) {
-            throw new CloudException("No context was defined for this request");
+        if( list == null ) {
+            throw new CloudException("No data was returned from endpoint");
         }
-        String endpoint = ctx.getEndpoint();
+
+        ArrayList<Region> regions = new ArrayList<Region>();
+
+        for( int i=0; i<list.length(); i++ ) {
+            try {
+                Region r = toRegion(list.getJSONObject(i));
+
+                if( r != null ) {
+                    regions.add(r);
+                }
+            }
+            catch( JSONException e ) {
+                logger.error("Error parsing response from cloud: " + e.getMessage());
+                e.printStackTrace();
+                throw new CloudException(e);
+            }
+        }
+        return regions;
+    }
+
+    private @Nullable Region toRegion(@Nullable JSONObject json) throws CloudException, InternalException {
+        if( json == null ) {
+            return null;
+        }
+        if( !json.has("id") || !json.has("name") ) {
+            return null;
+        }
+
         Region region = new Region();
-        URI uri;
+
+        region.setActive(true);
+        region.setAvailable(true);
+        region.setJurisdiction("US");
 
         try {
-            if( endpoint == null || endpoint.trim().equals("") || endpoint.contains("api.cloudsigma.com") ) {
-                uri = new URI("https://api.zrh.cloudsigma.com");
-            }
-            else {
-                uri = new URI(endpoint);
+            region.setProviderRegionId(json.getString("name"));
+            if( json.has("longName") ) {
+                region.setName(json.getString("longName"));
             }
         }
-        catch( URISyntaxException e ) {
-            throw new CloudException("Unknown region endpoint: " + endpoint);
+        catch( JSONException e ) {
+            logger.error("Error parsing JSON from cloud: " + e.getMessage());
+            e.printStackTrace();
+            throw new CloudException(e);
         }
-        if( uri.getHost().equals("api.zrh.cloudsigma.com") ) {
-            region.setActive(true);
-            region.setAvailable(true);
-            region.setName("Switzerland 1");
-            region.setProviderRegionId("eu-ch1");
-            region.setJurisdiction("CH");
-        }
-        else if( uri.getHost().equals("api.lvs.cloudsigma.com") ) {
-            region.setActive(true);
-            region.setAvailable(true);
-            region.setName("Nevada 1");
-            region.setProviderRegionId("us-nv1");
-            region.setJurisdiction("US");
-        }
-        else {
-            String[] parts = uri.getHost().split("\\.");
 
-            if( parts.length == 4 && parts[0].equals("api") && parts[2].equals("cloudsigma") && parts[3].equals("com") ) {
-                region.setActive(true);
-                region.setAvailable(true);
-                region.setName(parts[1]);
-                region.setProviderRegionId(parts[1]);
-                region.setJurisdiction("EU");
-            }
-            else {
-                throw new CloudException("Unknown region endpoint: " + endpoint);
-            }
+        if( region.getName() == null ) {
+            region.setName(region.getProviderRegionId());
         }
-        return Collections.singletonList(region);
+        if( region.getProviderRegionId().startsWith("sng") ) {
+            region.setJurisdiction("SG");
+        }
+        else if( region.getProviderRegionId().startsWith("ams") ) {
+            region.setJurisdiction("EU");
+        }
+        return region;
     }
 }

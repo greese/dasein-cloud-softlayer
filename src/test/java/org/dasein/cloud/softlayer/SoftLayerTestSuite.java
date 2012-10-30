@@ -16,7 +16,7 @@
  * ====================================================================
  */
 
-package org.dasein.cloud.cloudsigma;
+package org.dasein.cloud.softlayer;
 
 import junit.framework.Test;
 

@@ -14,9 +14,8 @@
  *  enStratus Networks Inc.
  * ====================================================================
  */
-package org.dasein.cloud.cloudsigma;
+package org.dasein.cloud.softlayer;
 
-import org.apache.commons.codec.binary.Base64;
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
@@ -39,6 +38,9 @@ import org.dasein.cloud.CloudErrorType;
 import org.dasein.cloud.CloudException;
 import org.dasein.cloud.InternalException;
 import org.dasein.cloud.ProviderContext;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -46,10 +48,8 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
@@ -65,24 +65,12 @@ public class SoftLayerMethod {
     static private final Logger logger = SoftLayer.getLogger(SoftLayerMethod.class);
     static private final Logger wire   = SoftLayer.getWireLogger(SoftLayerMethod.class);
 
-    /**
-     * 200	OK	Command succeeded, data returned (possibly 0 length)
-     */
-    static public final int OK             = 200;
-    /**
-     * 204	No Content	Command succeeded, no data returned (by definition)
-     */
-    static public final int NO_CONTENT     = 204;
+    static private final String VERSION = "v3";
 
-    /**
-     * 400	Bad Request
-     */
-    static public final int BAD_REQUEST     = 400;
-
-    /**
-     * 404	Not Found	Command, drive, server or other object not found
-     */
-    static public final int NOT_FOUND      = 404;
+    static private final int OK             = 200;
+    static private final int NO_CONTENT     = 204;
+    static private final int BAD_REQUEST     = 400;
+    static private final int NOT_FOUND      = 404;
 
 
     static public @Nullable String seekValue(@Nonnull String body, @Nonnull String key) {
@@ -140,13 +128,19 @@ public class SoftLayerMethod {
 
     public SoftLayerMethod(@Nonnull SoftLayer provider) { this.provider = provider; }
 
-    public @Nullable Map<String,String> getObject(@Nonnull String resource) throws InternalException, CloudException {
+    public @Nullable JSONObject getObject(@Nonnull String resource) throws InternalException, CloudException {
         String body = getString(resource);
 
         if( body == null || body.trim().length() < 1 ) {
             return null;
         }
-        return toMap(body);
+        try {
+            return new JSONObject(body);
+        }
+        catch( JSONException e ) {
+            logger.warn("Error parsing JSON from cloud: " + e.getMessage());
+            throw new CloudException(e);
+        }
     }
 
     public @Nullable String getString(@Nonnull String resource) throws InternalException, CloudException {
@@ -179,18 +173,6 @@ public class SoftLayerMethod {
                         throw new NoContextException();
                     }
                     HttpGet get = new HttpGet(target);
-                    String auth;
-
-                    try {
-                        String userName = new String(ctx.getAccessPublic(), "utf-8");
-                        String password = new String(ctx.getAccessPrivate(), "utf-8");
-
-                        auth = new String(Base64.encodeBase64((userName + ":" + password).getBytes()));
-                    }
-                    catch( UnsupportedEncodingException e ) {
-                        throw new InternalException(e);
-                    }
-                    get.addHeader("Authorization", "Basic " + auth);
 
                     if( wire.isDebugEnabled() ) {
                         wire.debug(get.getRequestLine().toString());
@@ -325,7 +307,7 @@ public class SoftLayerMethod {
         return new DefaultHttpClient(params);
     }
 
-    private @Nonnull String getEndpoint(@Nonnull String resource) throws NoContextException {
+    private @Nonnull String getEndpoint(@Nonnull String resource) throws SoftLayerConfigurationException, InternalException {
         ProviderContext ctx = provider.getContext();
 
         if( ctx == null ) {
@@ -334,58 +316,56 @@ public class SoftLayerMethod {
         String endpoint = ctx.getEndpoint();
 
         if( endpoint == null || endpoint.trim().equals("") ) {
-            endpoint = "https://api.zrh.cloudsigma.com";
+            endpoint = "https://api.softlayer.com";
         }
-        if( resource.startsWith("/") ) {
-            while( endpoint.endsWith("/") && !endpoint.equals("/") ) {
-                endpoint = endpoint.substring(0, endpoint.length()-1);
+        try {
+            URI uri = new URI(endpoint);
+
+            endpoint = uri.getScheme() + "://" + (new String(ctx.getAccessPublic(), "utf-8") + ":" + new String(ctx.getAccessPrivate(), "utf-8")) + "@" + uri.getHost();
+            if( uri.getPort() > 0 && uri.getPort() != 80 && uri.getPort() != 443 ) {
+                endpoint = endpoint + ":" + uri.getPort();
             }
-            return endpoint + resource;
+
+            if( resource.startsWith("/") ) {
+                resource = "rest/" + VERSION + resource;
+            }
+            else {
+                resource = "rest/" + VERSION + "/" + resource;
+            }
+            if( uri.getPath() == null || uri.getPath().equals("") || uri.getPath().equals("/") ) {
+                return (endpoint + "/" + resource);
+            }
+            else {
+                endpoint = endpoint + uri.getPath();
+                if( endpoint.endsWith("/") ) {
+                    return (endpoint + resource);
+                }
+                else {
+                    return (endpoint + "/" + resource);
+                }
+            }
         }
-        else if( endpoint.endsWith("/") ) {
-            return endpoint + resource;
+        catch( URISyntaxException e ) {
+            throw new SoftLayerConfigurationException(e);
         }
-        return (endpoint + "/" + resource);
+        catch( UnsupportedEncodingException e ) {
+            throw new InternalException(e);
+        }
     }
 
-    public @Nullable List<Map<String,String>> list(@Nonnull String resource) throws InternalException, CloudException {
+    public @Nullable JSONArray list(@Nonnull String resource) throws InternalException, CloudException {
         String body = getString(resource);
 
         if( body == null ) {
             return null;
         }
-        ArrayList<Map<String,String>> objects = new ArrayList<Map<String, String>>();
-
-        body = body.trim();
-        if( body.length() > 0 ) {
-            HashMap<String,String> currentObject = new HashMap<String, String>();
-            String[] lines = body.split("\n");
-
-            for( String line : lines ) {
-                line = line.trim();
-                if( line.length() < 1 ) {
-                    if( !currentObject.isEmpty() ) {
-                        objects.add(currentObject);
-                        currentObject = new HashMap<String, String>();
-                    }
-                    continue;
-                }
-                int idx = line.indexOf(" ");
-
-                if( idx == -1 ) {
-                    currentObject.put(line, null);
-                }
-                else {
-                    String k = line.substring(0, idx);
-
-                    currentObject.put(k, line.substring(idx+1));
-                }
-            }
-            if( !currentObject.isEmpty() ) {
-                objects.add(currentObject);
-            }
+        try {
+            return new JSONArray(body.trim());
         }
-        return objects;
+        catch( JSONException e ) {
+            logger.warn("Error parsing JSON from cloud: " + e.getMessage());
+            throw new CloudException(e);
+        }
     }
 
     public @Nullable Map<String,String> postObject(@Nonnull String resource, @Nonnull String body) throws InternalException, CloudException {
@@ -427,18 +407,7 @@ public class SoftLayerMethod {
                         throw new NoContextException();
                     }
                     HttpPost post = new HttpPost(target);
-                    String auth;
 
-                    try {
-                        String userName = new String(ctx.getAccessPublic(), "utf-8");
-                        String password = new String(ctx.getAccessPrivate(), "utf-8");
-
-                        auth = new String(Base64.encodeBase64((userName + ":" + password).getBytes()));
-                    }
-                    catch( UnsupportedEncodingException e ) {
-                        throw new InternalException(e);
-                    }
-                    post.addHeader("Authorization", "Basic " + auth);
                     try {
                         post.setEntity(new StringEntity(body, "utf-8"));
                     }

@@ -3,7 +3,7 @@
   
   <groupId>org.dasein</groupId>
   <artifactId>dasein-cloud-softlayer</artifactId>
-  <version>2012.09.1-SNAPSHOT</version>
+  <version>2012.09-SNAPSHOT</version>
   
   <name>Dasein Cloud SoftLayer</name>
   <description>Dasein Cloud implementation for the SoftLayer cloud</description>
@@ -57,6 +57,12 @@
           <artifactId>httpclient</artifactId>
           <version>4.2</version>
       </dependency>
+      <dependency>
+          <groupId>org.json</groupId>
+          <artifactId>json</artifactId>
+          <version>20090211</version>
+          <scope>compile</scope>
+      </dependency>
     <dependency>
         <groupId>log4j</groupId>
         <artifactId>log4j</artifactId>
@@ -69,7 +75,7 @@
       <dependency>
           <groupId>org.dasein</groupId>
           <artifactId>dasein-cloud-test</artifactId>
-          <version>2012.09.7</version>
+          <version>2012.09.8</version>
           <scope>test</scope>
           <optional>false</optional>
       </dependency>
@@ -219,7 +225,7 @@
                 </property>
             </systemProperties> 
           <includes>
-            <!-- <include>**/SoftLayerTestSuite.java</include> -->
+            <include>**/SoftLayerTestSuite.java</include>
           </includes>
         </configuration>
       </plugin> 

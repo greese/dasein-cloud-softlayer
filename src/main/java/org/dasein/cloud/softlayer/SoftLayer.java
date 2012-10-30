@@ -1,10 +1,9 @@
-package org.dasein.cloud.cloudsigma;
+package org.dasein.cloud.softlayer;
 
 import org.apache.log4j.Logger;
 import org.dasein.cloud.AbstractCloud;
 import org.dasein.cloud.ProviderContext;
-import org.dasein.cloud.cloudsigma.compute.SoftLayerComputeServices;
-import org.dasein.cloud.cloudsigma.network.SoftLayerNetworkServices;
+import org.json.JSONObject;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -36,17 +35,17 @@ public class SoftLayer extends AbstractCloud {
     static public @Nonnull Logger getLogger(@Nonnull Class<?> cls) {
         String pkg = getLastItem(cls.getPackage().getName());
 
-        if( pkg.equals("cloudsigma") ) {
+        if( pkg.equals("softlayer") ) {
             pkg = "";
         }
         else {
             pkg = pkg + ".";
         }
-        return Logger.getLogger("dasein.cloud.cloudsigma.std." + pkg + getLastItem(cls.getName()));
+        return Logger.getLogger("dasein.cloud.softlayer.std." + pkg + getLastItem(cls.getName()));
     }
 
     static public @Nonnull Logger getWireLogger(@Nonnull Class<?> cls) {
-        return Logger.getLogger("dasein.cloud.cloudsigma.wire." + getLastItem(cls.getPackage().getName()) + "." + getLastItem(cls.getName()));
+        return Logger.getLogger("dasein.cloud.softlayer.wire." + getLastItem(cls.getPackage().getName()) + "." + getLastItem(cls.getName()));
     }
 
     public SoftLayer() { }
@@ -60,18 +59,8 @@ public class SoftLayer extends AbstractCloud {
     }
 
     @Override
-    public @Nonnull SoftLayerComputeServices getComputeServices() {
-        return new SoftLayerComputeServices(this);
-    }
-
-    @Override
     public @Nonnull SoftLayerDataCenterServices getDataCenterServices() {
         return new SoftLayerDataCenterServices(this);
-    }
-
-    @Override
-    public @Nonnull SoftLayerNetworkServices getNetworkServices() {
-        return new SoftLayerNetworkServices(this);
     }
 
     @Override
@@ -96,21 +85,12 @@ public class SoftLayer extends AbstractCloud {
             }
             try {
                 SoftLayerMethod method = new SoftLayerMethod(this);
-                String body = method.getString("/profile/info");
+                JSONObject account = method.getObject("SoftLayer_Account");
 
-                if( body == null ) {
+                if( account == null ) {
                     return null;
                 }
-                String uuid = SoftLayerMethod.seekValue(body, "uuid");
-
-                if( logger.isDebugEnabled() ) {
-                    logger.debug("UUID=" + uuid);
-                }
-                if( uuid == null ) {
-                    logger.warn("No valid UUID was provided in the response during context testing");
-                    return null;
-                }
-                return uuid;
+                return (new String(ctx.getAccessPublic(), "utf-8"));
             }
             catch( Throwable t ) {
                 logger.error("Error testing SoftLayer credentials for " + ctx.getAccountNumber() + ": " + t.getMessage());

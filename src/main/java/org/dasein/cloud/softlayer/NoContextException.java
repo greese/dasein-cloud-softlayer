@@ -16,23 +16,14 @@
  */
 package org.dasein.cloud.softlayer;
 
-import org.dasein.cloud.CloudException;
-
-import javax.annotation.Nonnull;
-
 /**
- * An error in configuring SoftLayer's context in some manner.
- * <p>Created by George Reese: 10/25/12 7:46 PM</p>
+ * Simple error representing a failure to set up a configuration.
+ * <p>Created by George Reese: 10/30/12 1:10 PM</p>
  * @author George Reese
  * @version 2012.09 initial version
  * @since 2012.09
  */
-public class SoftLayerConfigurationException extends CloudException {
-    public SoftLayerConfigurationException(@Nonnull String message) {
-        super(message);
-    }
-
-    public SoftLayerConfigurationException(@Nonnull Throwable cause) {
-        super(cause);
-    }
+public class NoContextException extends SoftLayerConfigurationException {
+    public NoContextException() { super("No context was set for this request"); }
 }
+
